@@ -1,7 +1,7 @@
 import pytest
 import respx
 from httpx import Response
-from src.termoweb import Termoweb
+from src.termoweb import Termoweb, AuthenticationError
 
 @respx.mock
 def test_login_success():
@@ -14,9 +14,13 @@ def test_login_success():
         return_value=Response(200, json={"access_token": mock_token})
     )
 
+    respx.get("https://control.termoweb.net/api/v2/devs/").mock(
+        return_value=Response(200, json={"devs": [{"dev_id": "mock_dev_id"}]})
+    )
+
     client = Termoweb(mock_email, mock_password)
-    client.login()
-    assert client.userToken == mock_token
+    client.connect()
+    assert client.user_token == mock_token
 
 @respx.mock
 def test_login_failure():
@@ -26,7 +30,7 @@ def test_login_failure():
 
     client = Termoweb("user@example.com", "wrongpassword")
 
-    with pytest.raises(Exception) as excinfo:
-        client.login()
+    with pytest.raises(AuthenticationError) as excinfo:
+        client.connect()
 
-    assert "Login failed: 401" in str(excinfo.value)
+    assert "Authentication failed: 401" in str(excinfo.value)
