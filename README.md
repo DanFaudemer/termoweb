@@ -7,6 +7,6 @@ Manage your termoweb devices in Python
 | Feature           | Supported |
 |-------------------|-----------|
 | Paring device     | ❌        |
-| Radiator          | ❌        |
+| Radiator          | ✅        |
 | Thermostat        | ❌        |
 | Power Monitor     | ❌        |
