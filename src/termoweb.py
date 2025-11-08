@@ -1,4 +1,5 @@
 import httpx
+import asyncio
 import time
 from typing import Optional, Dict, Any
 
@@ -89,25 +90,36 @@ class Termoweb:
             url=f'{self.BASE_URL}/api/v2/devs/{self.device_id}/mgr/nodes',
             headers={"Authorization": f"Bearer {self.user_token}"},
         )
-        
         nodes_id = [node['addr'] for node in response.json().get('nodes', []) if node['type'] == 'htr']
 
-        heaters = {}
-        for node_id in nodes_id:
-            response = self._make_request(
-                method='GET',
-                url=f'{self.BASE_URL}/api/v2/devs/{self.device_id}/htr/{node_id}/settings',
-                headers={"Authorization": f"Bearer {self.user_token}"},
-            )
-            
-            data = response.json()
-            heaters[node_id] = {
-                "name": data.get("name", "Unknown"),
-                "mode": data.get("mode", None),
-                "target_temp": data.get("stemp", None),
-                "room_temp": data.get("mtemp", None),
-            }
-        return heaters
+        return asyncio.run(self._fetch_all_heaters(nodes_id))
+
+    async def _fetch_all_heaters(self, nodes_id: list[int]) -> Dict[int, Dict[str, Any]]:
+        async with httpx.AsyncClient() as client:
+            tasks = [self._fetch_heater(client, node_id) for node_id in nodes_id]
+            results = await asyncio.gather(*tasks)
+            return dict(results)
+
+    async def _fetch_heater(self, client: httpx.AsyncClient, node_id: int) -> tuple[int, Dict[str, Any]]:
+        response = await client.get(
+            url=f'{self.BASE_URL}/api/v2/devs/{self.device_id}/htr/{node_id}/settings',
+            headers={"Authorization": f"Bearer {self.user_token}"},
+        )
+
+        if response.status_code != 200:
+            if response.status_code == 401:
+                raise AuthenticationError(f"Authentication failed: {response.status_code} - {response.text}")
+            else:
+                error_msg = f"GET {response.url} failed: {response.status_code} - {response.text}"
+                raise APIError(error_msg)
+
+        data = response.json()
+        return node_id, {
+            "name": data.get("name", "Unknown"),
+            "mode": data.get("mode", None),
+            "target_temp": data.get("stemp", None),
+            "room_temp": data.get("mtemp", None),
+        }
         
     def set_heater(self, heater_id: int, mode: str, target_temp: float) -> None:
         settings = {
